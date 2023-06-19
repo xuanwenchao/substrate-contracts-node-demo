@@ -3,6 +3,8 @@
 #[ink::contract]
 mod erc20 {
     use ink::storage::Mapping;
+    use trait_erc20::{Error, Result, TERC20};
+
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
@@ -15,136 +17,165 @@ mod erc20 {
         allowances: Mapping<(AccountId, AccountId), Balance>,
     }
 
-    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
-    pub enum Error{
-        BalanceTooLow,
-        AllowancesTooLow,
-    }
 
     #[ink(event)]
     pub struct Transfer {
         #[ink(topic)]
-        from: AccountId,
+        from: Option<AccountId>,
         #[ink(topic)]
-        to: AccountId,
+        to: Option<AccountId>,
         value: Balance,
     }
 
     #[ink(event)]
     pub struct Approval {
         #[ink(topic)]
-        from: AccountId,
+        from: Option<AccountId>,
         #[ink(topic)]
-        to: AccountId,
+        to: Option<AccountId>,
         value: Balance,
     }
 
-    type Result<T> = core::result::Result<T, Error>;
-
     impl Erc20 {
-            #[ink(constructor)]
-            pub fn new(total_supply: Balance) -> Self {
-                let mut balances = Mapping::new();
-                balances.insert(Self::env().caller(), &total_supply);
-                Self {
-                    total_supply,
-                    balances,
-                    ..Default::default()
-                }
+        #[ink(constructor)]
+        pub fn new(total_supply: Balance) -> Self {
+            let mut balances = Mapping::new();
+            balances.insert(Self::env().caller(), &total_supply);
+
+            Self::env().emit_event(Transfer {
+                from: None,
+                to: Some(Self::env().caller()),
+                value: total_supply,
+            });
+
+            Self {
+                total_supply,
+                balances,
+                ..Default::default()
+            }
+        }
+
+        #[ink(constructor)]
+        pub fn default() -> Self {
+            Self::new(Default::default())
+        }
+
+        pub fn transfer_helper(
+            &mut self,
+            from: &AccountId,
+            to: &AccountId,
+            value: Balance,
+        ) -> Result<()> {
+            let balance_from = self.balance_of(*from);
+            let balance_to = self.balance_of(*to);
+
+            if value > balance_from {
+                return Err(Error::BalanceTooLow);
             }
 
-            #[ink(constructor)]
-            pub fn default() -> Self {
-                Self::new(Default::default())
+            self.balances.insert(from, &(balance_from - value));
+            self.balances.insert(to, &(balance_to + value));
+
+            self.env().emit_event(Transfer {
+                from: Some(*from),
+                to: Some(*to),
+                value,
+            });
+
+            Ok(())
+        }
+    }
+
+    impl TERC20 for Erc20 {
+        #[ink(message)]
+        fn total_supply(&self) -> Balance {
+            self.total_supply
+        }
+
+        #[ink(message)]
+        fn balance_of(&self, who: AccountId) -> Balance {
+            self.balances.get(&who).unwrap_or_default()
+        }
+
+        #[ink(message)]
+        fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
+            let from = self.env().caller(); // get the caller
+            self.transfer_helper(&from, &to, value)
+        }
+
+        #[ink(message)]
+        fn approve(&mut self, spender: AccountId, value: Balance) -> Result<()> {
+            let sender = self.env().caller(); // get the caller
+            self.allowances.insert(&(sender, spender), &value);
+            self.env().emit_event(Approval {
+                from: Some(sender),
+                to: Some(spender),
+                value,
+            });
+            Ok(())
+        }
+
+        #[ink(message)]
+        fn transfer_from(&mut self, from: AccountId, to: AccountId, value: Balance) -> Result<()> {
+            let sender = self.env().caller();
+            let allowances = self.allowances.get(&(from, sender)).unwrap_or_default();
+            if allowances < value {
+                return Err(Error::AllowancesTooLow);
             }
 
-            #[ink(message)]
-            pub fn total_supply(&self) -> Balance {
-                self.total_supply
-            }
+            self.allowances
+                .insert(&(from, sender), &(allowances - value));
 
-            #[ink(message)]
-            pub fn balance_of(&self, who: AccountId) -> Balance {
-                self.balances.get(&who).unwrap_or_default()
-            }
+            self.transfer_helper(&from, &to, value)
+        }
+    }
 
-            #[ink(message)]
-            pub fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
-                let from = self.env().caller();  // get the caller 
-                self.transfer_helper(&from, &to, value)
-            }
-
-
-            #[ink(message)]
-            pub fn approve(&mut self, spender: AccountId, value: Balance) -> Result<()> {
-                let sender = self.env().caller();  // get the caller 
-                self.allowances.insert(&(sender, spender), &value);
-                self.env().emit_event(Approval{from:sender,to:spender,value});
-                Ok(())
-            }
-
-            #[ink(message)]
-            pub fn transfer_from(&mut self, from: AccountId, to: AccountId, value: Balance) -> Result<()> {
-                let sender = self.env().caller();
-                let allowances = self.allowances.get(&(from, sender)).unwrap_or_default();
-                if allowances < value {
-                    return Err(Error::AllowancesTooLow);
-                }
-
-                self.allowances.insert(&(from, sender), &(allowances - value));
-
-                self.transfer_helper(&from, &to, value)
-            }
-
-            pub fn transfer_helper(&mut self, from: &AccountId, to: &AccountId, value: Balance) -> Result<()> {
-                let balance_from = self.balance_of(*from);
-                let balance_to = self.balance_of(*to);
-
-                if value > balance_from {
-                    return Err(Error::BalanceTooLow);
-                }
-
-                self.balances.insert(from, &(balance_from - value));
-                self.balances.insert(to, &(balance_to + value));
-                
-                self.env().emit_event(Transfer {
-                    from:*from,
-                    to:*to,
-                    value,
-                });
-
-                Ok(())
-            }
-
-      }
-
-
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
     #[cfg(test)]
     mod tests {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
-        /// We test if the default constructor does its job.
+        type Event = <Erc20 as ::ink::reflect::ContractEventBase>::Type;
+
         #[ink::test]
-        fn default_works() {
-            let erc20 = Erc20::default();
-            assert_eq!(erc20.get(), false);
+        fn constructor_works() {
+            let erc20 = Erc20::new(10000);
+            let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            assert_eq!(erc20.total_supply, 10000);
+            assert_eq!(erc20.balance_of(accounts.alice), 10000);
+            let emitted_events = ink::env::test::recorded_events().collect::<Vec<_>>();
+            let event = emitted_events[0].clone();
+            let decoded =
+                <Event as scale::Decode>::decode(&mut &event.data[..]).expect("decoded error!");
+            match decoded {
+                Event::Transfer(Transfer { from, to, value }) => {
+                    assert_eq!(from, None, "from should be none!");
+                    assert_eq!(to, Some(accounts.alice), "to should be alice!");
+                    assert_eq!(value, 10000, "value should be 10000!");
+                }
+                _ => panic!("expect a transfer event!"),
+            }
         }
 
-        /// We test a simple use case of our contract.
         #[ink::test]
-        fn it_works() {
-            let mut erc20 = Erc20::new(false);
-            assert_eq!(erc20.get(), false);
-            erc20.flip();
-            assert_eq!(erc20.get(), true);
+        fn transfer_should_work() {
+            let mut erc20 = Erc20::new(10000);
+            let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            let res = erc20.transfer(accounts.bob, 12);
+            assert_eq!(res, Ok(()));
+            assert_eq!(erc20.balance_of(accounts.alice), 9988);
+            assert_eq!(erc20.balance_of(accounts.bob), 12);
+        }
+
+        #[ink::test]
+        fn invalid_transfer_should_fail() {
+            let mut erc20 = Erc20::new(10000);
+            let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            let res = erc20.transfer(accounts.charlie, 12);
+            assert_eq!(res, Err(Error::BalanceTooLow));
         }
     }
-
 
     #[cfg(all(test, feature = "e2e-tests"))]
     mod e2e_tests {
@@ -159,55 +190,31 @@ mod erc20 {
 
         /// We test that we can upload and instantiate the contract using its default constructor.
         #[ink_e2e::test]
-        async fn default_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = Erc20Ref::default();
-
-            // When
+        async fn e2e_transfer(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+            let total_supply = 123;
+            let constructor = Erc20Ref::new(total_supply);
             let contract_account_id = client
                 .instantiate("erc20", &ink_e2e::alice(), constructor, 0, None)
                 .await
                 .expect("instantiate failed")
                 .account_id;
 
-            // Then
-            let get = build_message::<Erc20Ref>(contract_account_id.clone())
-                .call(|erc20| erc20.get());
-            let get_result = client.call_dry_run(&ink_e2e::alice(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
+            let alice_acc = ink_e2e::account_id(ink_e2e::AccountKeyring::Alice);
+            let bob_acc = ink_e2e::account_id(ink_e2e::AccountKeyring::Bob);
 
-            Ok(())
-        }
+            let transfer_msg = build_message::<Erc20Ref>(contract_account_id.clone())
+                .call(|erc20| erc20.transfer(bob_acc, 12));
 
-        /// We test that we can read and write a value from the on-chain contract contract.
-        #[ink_e2e::test]
-        async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = Erc20Ref::new(false);
-            let contract_account_id = client
-                .instantiate("erc20", &ink_e2e::bob(), constructor, 0, None)
-                .await
-                .expect("instantiate failed")
-                .account_id;
+            let res = client.call(&ink_e2e::alice(), transfer_msg, 0, None).await;
 
-            let get = build_message::<Erc20Ref>(contract_account_id.clone())
-                .call(|erc20| erc20.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
+            assert!(res.is_ok());
 
-            // When
-            let flip = build_message::<Erc20Ref>(contract_account_id.clone())
-                .call(|erc20| erc20.flip());
-            let _flip_result = client
-                .call(&ink_e2e::bob(), flip, 0, None)
-                .await
-                .expect("flip failed");
-
-            // Then
-            let get = build_message::<Erc20Ref>(contract_account_id.clone())
-                .call(|erc20| erc20.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), true));
+            let balance_of_msg = build_message::<Erc20Ref>(contract_account_id.clone())
+                .call(|erc20| erc20.balance_of(alice_acc));
+            let res = client
+                .call_dry_run(&ink_e2e::alice(), &balance_of_msg, 0, None)
+                .await;
+            assert_eq!(res.return_value(), total_supply - 12);
 
             Ok(())
         }

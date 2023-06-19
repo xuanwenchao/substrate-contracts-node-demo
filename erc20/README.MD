@@ -17,4 +17,14 @@ cargo build --release
 
 打开调试前端
 https://contracts-ui.substrate.io/
+
+
+做e2etest时，先指定contract-node节点的执行路径：
+```js
+export CONTRACTS_NODE=/Users/xuanwenchao/Documents/projects/Rust/substrate/substrate-contracts-node/target/release/substrate-contracts-node
+```
+然后执行测试命令
+```js
+cargo test --features e2e-tests
+```
  
