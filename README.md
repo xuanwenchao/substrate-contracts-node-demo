@@ -1,7 +1,8 @@
 # 1. substrate 第五课作业
-代码地址：
+## 1.1 代码地址：
 https://github.com/xuanwenchao/substrate-contracts-node-demo/tree/main/erc20
 
+## 1.2 运行效果图
 编译erc20合约工程
 <img width="1066" alt="截屏2023-06-16 15 31 07" src="https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/19080102-2e7d-46eb-b69e-2996ed64f53f">
 ![2](https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/93192952-ff9f-42a2-ac2a-bc6c375c67cf)
@@ -10,6 +11,9 @@ https://github.com/xuanwenchao/substrate-contracts-node-demo/tree/main/erc20
 ![5](https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/e513b26a-115a-4805-941e-6872cf942819)
 ![6](https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/6c2e23b0-4643-4b26-9297-1218939341c2)
 ![7](https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/f3f0bdba-30b8-4e82-bf31-50c95ac97429)
+
+## 1.3 测试用例执行结果
+<img width="959" alt="截屏2023-06-19 11 52 56" src="https://github.com/xuanwenchao/substrate-contracts-node-demo/assets/1876277/7d000381-d2e0-48e0-8bb8-86b55e7192ae">
 
 # 2. Erc20+Erc721+Markets
 ## 2.1 上传合约文件
